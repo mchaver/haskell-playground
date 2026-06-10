@@ -1,10 +1,11 @@
-# HLint configuration for matching-engine.
+# HLint configuration, shared by every project in this repo (HLint discovers it
+# by searching up the directory tree from the files being linted).
 #
 # House rules enforced here on top of HLint's defaults:
 #
 #   1. Partial functions from the Prelude / base are banned outright. They throw
-#      at runtime on empty or malformed input, which is exactly the class of bug
-#      a correctness-first matching engine must not ship.
+#      at runtime on empty or malformed input — exactly the class of bug a
+#      correctness-first codebase must not ship.
 #   2. `error`, `undefined`, and `errorWithoutStackTrace` are banned, so pure
 #      code is kept total. Use `Maybe`/`Either` (or smart constructors such as
 #      `mkQuantity`) to make invalid states unrepresentable instead.

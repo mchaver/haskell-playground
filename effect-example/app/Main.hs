@@ -19,13 +19,13 @@
 
 module Main where
 
-import Effectful (Dispatch(Dynamic), DispatchOf, Eff, Effect, IOE, (:>), liftIO, runEff, runPureEff)
-import Effectful.Error.Static (Error, prettyCallStack, runError, throwError)
-import Effectful.Exception (catchIO)
-import Effectful.Dispatch.Dynamic (interpret, reinterpret, send)
-import Effectful.State.Static.Local (get, modify, runState)
 import Data.Map.Strict (Map)
 import qualified Data.Map.Strict as Map
+import Effectful (Dispatch (Dynamic), DispatchOf, Eff, Effect, IOE, liftIO, runEff, runPureEff, (:>))
+import Effectful.Dispatch.Dynamic (interpret, reinterpret, send)
+import Effectful.Error.Static (Error, prettyCallStack, runError, throwError)
+import Effectful.Exception (catchIO)
+import Effectful.State.Static.Local (get, modify, runState)
 import qualified System.IO as IO
 
 -- send: execute effect operation
@@ -36,7 +36,7 @@ newtype FsError = FsError String deriving Show
 -- against a file system. The constructors are the "API"; how they are actually
 -- carried out is decided later by an interpreter.
 data FileSystem :: Effect where
-  ReadFile  :: FilePath -> FileSystem m String
+  ReadFile :: FilePath -> FileSystem m String
   WriteFile :: FilePath -> String -> FileSystem m ()
 
 type instance DispatchOf FileSystem = Dynamic
@@ -52,18 +52,19 @@ writeFile' :: (FileSystem :> es) => FilePath -> String -> Eff es ()
 writeFile' path contents = send (WriteFile path contents)
 
 -- perform an IO action for each con
+
 -- | A real interpreter: perform each operation in 'IO', converting any IO
 -- exception into a typed 'FsError'.
-runFileSystemIO
-  :: (IOE :> es, Error FsError :> es)
-  => Eff (FileSystem : es) a
-  -> Eff es a
+runFileSystemIO ::
+  (IOE :> es, Error FsError :> es) =>
+  Eff (FileSystem : es) a ->
+  Eff es a
 runFileSystemIO = interpret $ \_ eff ->
   case eff of
-    ReadFile path           -> adapt $ IO.readFile path
+    ReadFile path -> adapt $ IO.readFile path
     WriteFile path contents -> adapt $ IO.writeFile path contents
-  where
-    adapt m = liftIO m `catchIO` \e -> throwError . FsError $ show e
+ where
+  adapt m = liftIO m `catchIO` \e -> throwError . FsError $ show e
 
 -- | A second, completely separate effect: structured logging. It exists to show
 -- that effects are scoped *independently of one another* — holding 'FileSystem'
@@ -81,22 +82,23 @@ runLoggerIO :: (IOE :> es) => Eff (Logger : es) a -> Eff es a
 runLoggerIO = interpret $ \_ (LogMsg msg) -> liftIO (putStrLn ("[log] " <> msg))
 
 -- perform non io actions when interpreting the effect system
+
 -- | A pure interpreter: instead of touching the disk, it carries an in-memory
 -- @Map FilePath String@ as a private 'State' effect. 'reinterpret' lets the
 -- handler introduce that local 'State' which it then discharges with 'runState',
 -- so callers never see it. Great for tests — no IO required.
-runFileSystemPure
-  :: (Error FsError :> es)
-  => Map FilePath String
-  -> Eff (FileSystem : es) a
-  -> Eff es (a, Map FilePath String)
+runFileSystemPure ::
+  (Error FsError :> es) =>
+  Map FilePath String ->
+  Eff (FileSystem : es) a ->
+  Eff es (a, Map FilePath String)
 runFileSystemPure fs0 = reinterpret (runState fs0) $ \_ eff ->
   case eff of
     ReadFile path -> do
       fs <- get
       case Map.lookup path fs of
         Just contents -> pure contents
-        Nothing       -> throwError . FsError $ "no such file: " <> path
+        Nothing -> throwError . FsError $ "no such file: " <> path
     WriteFile path contents -> modify (Map.insert path contents)
 
 -- | A program written against the abstract 'FileSystem' effect. It has no idea
@@ -155,9 +157,9 @@ main = do
   putStrLn "\n== verboseProgram (FileSystem + Logger) =="
   vResult <- runEff . runError @FsError . runLoggerIO . runFileSystemIO $ verboseProgram
   report vResult
-  where
-    report res = case res of
-      Left (callStack, FsError err) ->
-        putStrLn $ "File system error: " <> err <> "\n" <> prettyCallStack callStack
-      Right contents ->
-        putStr $ "Read back:\n" <> contents
+ where
+  report res = case res of
+    Left (callStack, FsError err) ->
+      putStrLn $ "File system error: " <> err <> "\n" <> prettyCallStack callStack
+    Right contents ->
+      putStr $ "Read back:\n" <> contents

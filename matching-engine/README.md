@@ -112,8 +112,10 @@ Run `make` (or `make help`) to list them:
 
 ### Style and lint rules
 
-Two checked-in config files keep the code consistent and steer it away from
-common Haskell footguns:
+Two config files keep the code consistent and steer it away from common Haskell
+footguns. They live at the **repo root** (`../.hlint.yaml`, `../fourmolu.yaml`)
+and are shared by every project in this repo — both tools discover them by
+searching up the directory tree, so the `make` tasks here use them unchanged.
 
 - **`fourmolu.yaml`** — formatting (2-space indent, leading commas, `-- |`
   Haddock). `make format` rewrites to this; `make format-check` enforces it.
@@ -138,7 +140,8 @@ src/OrderBook/Types.hs   -- domain types; illegal states made unrepresentable
 src/OrderBook/Book.hs    -- the book and the matching engine
 test/Main.hs             -- Hedgehog property suite (the invariants above)
 app/Main.hs              -- a scripted demo that prints trades and the book
-.hlint.yaml              -- lint house rules (partial fns, error, lazy folds, ...)
-fourmolu.yaml            -- formatting config
 Makefile                 -- build / test / lint / format tasks
 ```
+
+Lint and formatting configs are shared across the repo and live one level up:
+`../.hlint.yaml` and `../fourmolu.yaml`.

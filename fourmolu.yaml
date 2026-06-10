@@ -1,0 +1,23 @@
+# Fourmolu formatting config, shared by every project in this repo (Fourmolu
+# discovers it by walking up from each source file). House style: 2-space
+# indentation, leading commas, and `-- |` line-style Haddock (not {- | -} blocks).
+
+indentation: 2
+column-limit: none
+function-arrows: trailing
+comma-style: leading
+import-export-style: leading
+import-grouping: legacy
+indent-wheres: false
+record-brace-space: true
+newlines-between-decls: 1
+haddock-style: single-line
+let-style: auto
+in-style: right-align
+if-style: indented
+# Keep parens on single constraints — operator constraints like (FileSystem :> es)
+# read better with them, and nothing in the repo uses bare `Show a =>`-style ones.
+single-constraint-parens: auto
+single-deriving-parens: never
+unicode: never
+respectful: true
