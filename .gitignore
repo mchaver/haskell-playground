@@ -1,0 +1,5 @@
+# Haskell / Cabal build artifacts (applies to every subproject)
+dist-newstyle/
+*.hi
+*.o
+.ghc.environment.*
