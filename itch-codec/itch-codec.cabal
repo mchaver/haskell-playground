@@ -1,0 +1,50 @@
+cabal-version:      3.0
+name:               itch-codec
+version:            0.1.0.0
+synopsis:           A typed codec for a subset of NASDAQ TotalView-ITCH 5.0
+description:        A small, correctness-first encoder/decoder for a
+                    representative subset of the NASDAQ TotalView-ITCH 5.0
+                    binary market-data protocol. Decoding is total: every
+                    malformed input maps to a typed 'DecodeError', never an
+                    exception. Round-trips are pinned down by property tests.
+license:            BSD-3-Clause
+author:             mchaver
+maintainer:         mchaver@gmail.com
+build-type:         Simple
+
+common warnings
+    ghc-options: -Wall
+                 -Wcompat
+                 -Wincomplete-record-updates
+                 -Wincomplete-uni-patterns
+                 -Wredundant-constraints
+
+library
+    import:           warnings
+    exposed-modules:  ITCH.Types
+                      ITCH.Codec
+    build-depends:    base       >=4.17 && <5
+                    , bytestring
+                    , cereal
+    hs-source-dirs:   src
+    default-language: GHC2021
+
+executable itch-codec-demo
+    import:           warnings
+    main-is:          Main.hs
+    hs-source-dirs:   app
+    build-depends:    base
+                    , bytestring
+                    , itch-codec
+    default-language: GHC2021
+
+test-suite spec
+    import:           warnings
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    hs-source-dirs:   test
+    build-depends:    base
+                    , bytestring
+                    , hedgehog
+                    , itch-codec
+    default-language: GHC2021
