@@ -3,15 +3,22 @@
 module Main (main) where
 
 import           Data.List          (foldl')
-import           Data.Maybe         (fromMaybe)
 
-import           Hedgehog
+import           Hedgehog           (Gen, Group (..), Property, assert,
+                                     checkParallel, diff, failure, footnote,
+                                     forAll, property, success, (===))
 import qualified Hedgehog.Gen       as Gen
 import           Hedgehog.Main      (defaultMain)
 import qualified Hedgehog.Range     as Range
 
-import           OrderBook.Book
-import           OrderBook.Types
+import           OrderBook.Book     (Book, bestAsk, bestBid, bookQuantity,
+                                     emptyBook, match, mrBook, mrStatus,
+                                     mrTrades, restingOrders)
+import           OrderBook.Types    (NewOrder (..), OrderId (..),
+                                     OrderType (..), Price (..), Quantity,
+                                     Resting (..), Side (..), TakerStatus (..),
+                                     TimeInForce (..), Trade (..), mkQuantity,
+                                     quantityInt)
 
 -- ---------------------------------------------------------------------------
 -- Generators
@@ -24,8 +31,10 @@ import           OrderBook.Types
 genPrice :: Gen Price
 genPrice = Price <$> Gen.int (Range.linearFrom 100 90 110)
 
+-- | The range is strictly positive, so every generated value maps through
+-- 'mkQuantity'; 'Gen.mapMaybe' keeps the generator total without 'error'.
 genQty :: Gen Quantity
-genQty = fromMaybe (error "genQty") . mkQuantity <$> Gen.int (Range.linear 1 8)
+genQty = Gen.mapMaybe mkQuantity (Gen.int (Range.linear 1 8))
 
 genSide :: Gen Side
 genSide = Gen.element [Buy, Sell]

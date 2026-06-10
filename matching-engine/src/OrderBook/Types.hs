@@ -14,6 +14,8 @@ module OrderBook.Types
   , Quantity
   , mkQuantity
   , quantityInt
+  , minQuantity
+  , subQuantity
   , OrderId (..)
   , SequenceNumber (..)
   , TimeInForce (..)
@@ -51,6 +53,19 @@ mkQuantity n
 
 quantityInt :: Quantity -> Int
 quantityInt (Quantity n) = n
+
+-- | The smaller of two quantities. Total: the minimum of two strictly-positive
+-- values is itself strictly positive, so no smart constructor is needed.
+minQuantity :: Quantity -> Quantity -> Quantity
+minQuantity (Quantity a) (Quantity b) = Quantity (min a b)
+
+-- | Subtract the second quantity from the first. Returns 'Nothing' when the
+-- result would not be strictly positive (i.e. the second is greater than or
+-- equal to the first), preserving the positivity invariant without 'error'.
+subQuantity :: Quantity -> Quantity -> Maybe Quantity
+subQuantity (Quantity a) (Quantity b)
+  | a > b     = Just (Quantity (a - b))
+  | otherwise = Nothing
 
 -- | Stable identifier for an order, assigned by the gateway/client.
 newtype OrderId

@@ -1,0 +1,42 @@
+# HLint configuration for matching-engine.
+#
+# Two house rules are enforced here on top of HLint's defaults:
+#
+#   1. Partial functions from the Prelude / base are banned outright. They throw
+#      at runtime on empty or malformed input, which is exactly the class of bug
+#      a correctness-first matching engine must not ship.
+#   2. `error`, `undefined`, and `errorWithoutStackTrace` are banned, so pure
+#      code is kept total. Use `Maybe`/`Either` (or smart constructors such as
+#      `mkQuantity`) to make invalid states unrepresentable instead.
+#
+# To allow one of these in a specific module despite the ban, add that module to
+# the corresponding `within:` list (e.g. `within: [Some.Module]`).
+
+# --- Banned: partial functions from the Prelude / base -----------------------
+- functions:
+    - {name: Prelude.head,                within: [], message: "head is partial; use pattern matching, listToMaybe, or Data.List.NonEmpty"}
+    - {name: Prelude.tail,                within: [], message: "tail is partial; use pattern matching or drop 1"}
+    - {name: Prelude.init,                within: [], message: "init is partial; use pattern matching"}
+    - {name: Prelude.last,                within: [], message: "last is partial; use pattern matching or Data.List.NonEmpty.last"}
+    - {name: Prelude.!!,                  within: [], message: "(!!) is partial; use indexing that returns Maybe"}
+    - {name: Prelude.foldr1,              within: [], message: "foldr1 is partial; use foldr with an explicit seed"}
+    - {name: Prelude.foldl1,              within: [], message: "foldl1 is partial; use foldl' with an explicit seed"}
+    - {name: Prelude.maximum,             within: [], message: "maximum is partial; use Data.List.NonEmpty.maximum or guard for empty"}
+    - {name: Prelude.minimum,             within: [], message: "minimum is partial; use Data.List.NonEmpty.minimum or guard for empty"}
+    - {name: Prelude.cycle,               within: [], message: "cycle is partial; it loops forever on []"}
+    - {name: Prelude.read,                within: [], message: "read is partial; use readMaybe from Text.Read"}
+    - {name: Data.List.foldl1',           within: [], message: "foldl1' is partial; use foldl' with an explicit seed"}
+    - {name: Data.Maybe.fromJust,         within: [], message: "fromJust is partial; pattern match or use fromMaybe / maybe"}
+
+# --- Banned: error and friends (keep pure code total) ------------------------
+- functions:
+    - {name: Prelude.error,                  within: [], message: "error makes a function partial; return Maybe/Either instead"}
+    - {name: Prelude.errorWithoutStackTrace, within: [], message: "errorWithoutStackTrace makes a function partial; return Maybe/Either instead"}
+    - {name: Prelude.undefined,              within: [], message: "undefined makes a function partial; provide a real value"}
+
+# Don't let HLint's own hints push us toward the partial functions banned above.
+- ignore: {name: Use head}
+- ignore: {name: Use last}
+- ignore: {name: Use maximum}
+- ignore: {name: Use minimum}
+- ignore: {name: Use foldr1}

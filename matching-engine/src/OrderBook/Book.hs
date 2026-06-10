@@ -28,7 +28,12 @@ import qualified Data.Map.Strict as Map
 import           Data.Sequence   (Seq, ViewL (..), viewl, (<|))
 import qualified Data.Sequence   as Seq
 
-import           OrderBook.Types
+import           OrderBook.Types (NewOrder (..), OrderId, OrderType (..),
+                                  Price, Quantity, Resting (..),
+                                  SequenceNumber (SequenceNumber), Side (..),
+                                  TakerStatus (..), TimeInForce (..),
+                                  Trade (..), minQuantity, quantityInt,
+                                  subQuantity)
 
 -- | A central limit order book. Each side maps a price to the FIFO queue of
 -- orders resting at that price (front of the queue = earliest arrival).
@@ -93,11 +98,9 @@ match order book =
 -- unfilled remainder according to order type and time-in-force.
 execute :: NewOrder -> Book -> MatchResult
 execute order book =
-  let side                     = noSide order
-      want                     = quantityInt (noQty order)
-      (trades, filled, oppMap) = consume side (noId order) (noType order) want (oppositeMap side book)
-      leftover                 = want - filled
-      bookAfter                = setOppositeMap side oppMap book
+  let side                       = noSide order
+      (trades, leftover, oppMap) = consume side (noId order) (noType order) (noQty order) (oppositeMap side book)
+      bookAfter                  = setOppositeMap side oppMap book
   in finalize order leftover trades bookAfter
 
 -- | Pick the side of the book the taker trades against.
@@ -111,16 +114,17 @@ setOppositeMap Sell m bk = bk { bkBids = m }
 
 -- | Consume marketable liquidity from the opposite side.
 --
--- Returns the trades produced, the total quantity filled, and the opposite-side
--- map with consumed orders removed (or reduced). Stops at the first level that
--- is not marketable, or when the taker's quantity is exhausted.
+-- Returns the trades produced, the taker's unfilled remainder ('Nothing' once
+-- the taker is exhausted), and the opposite-side map with consumed orders
+-- removed (or reduced). Stops at the first level that is not marketable, or
+-- when the taker's quantity is exhausted.
 consume
   :: Side
   -> OrderId
   -> OrderType
-  -> Int                          -- ^ remaining taker quantity
+  -> Quantity                     -- ^ remaining taker quantity
   -> Map Price (Seq Resting)      -- ^ opposite side
-  -> ([Trade], Int, Map Price (Seq Resting))
+  -> ([Trade], Maybe Quantity, Map Price (Seq Resting))
 consume side taker otype = go
   where
     -- The best level for the taker to hit: lowest ask (buyer) / highest bid (seller).
@@ -135,72 +139,78 @@ consume side taker otype = go
         Buy  -> lim >= lvlPrice
         Sell -> lim <= lvlPrice
 
-    go remaining m
-      | remaining <= 0 = ([], 0, m)
-      | otherwise =
-          case bestView m of
-            Nothing -> ([], 0, m)
-            Just ((lvlPrice, queue), restMap)
-              | not (marketable lvlPrice) -> ([], 0, m)
-              | otherwise ->
-                  let (lvlTrades, lvlFilled, queue', remaining') =
-                        matchLevel taker lvlPrice remaining queue
-                      m' = if Seq.null queue'
-                             then restMap
-                             else Map.insert lvlPrice queue' restMap
-                      (more, moreFilled, m'') = go remaining' m'
-                  in (lvlTrades ++ more, lvlFilled + moreFilled, m'')
+    go remaining m =
+      case bestView m of
+        Nothing -> ([], Just remaining, m)
+        Just ((lvlPrice, queue), restMap)
+          | not (marketable lvlPrice) -> ([], Just remaining, m)
+          | otherwise ->
+              let (lvlTrades, queue', remaining') = matchLevel taker lvlPrice remaining queue
+                  m' = if Seq.null queue'
+                         then restMap
+                         else Map.insert lvlPrice queue' restMap
+              in case remaining' of
+                   Nothing   -> (lvlTrades, Nothing, m')
+                   Just rem' ->
+                     let (more, leftover, m'') = go rem' m'
+                     in (lvlTrades ++ more, leftover, m'')
 
 -- | Match the taker against a single price level's FIFO queue.
 --
--- Walks the queue front-to-back (time priority). Returns the trades, the
--- quantity filled at this level, the queue with consumed orders removed, and
--- the taker quantity still outstanding after this level.
+-- Walks the queue front-to-back (time priority). Returns the trades, the queue
+-- with consumed orders removed, and the taker quantity still outstanding after
+-- this level ('Nothing' once the taker is exhausted). All quantities stay in
+-- the strictly-positive 'Quantity' domain, so no partial reconstruction from a
+-- raw 'Int' is ever needed.
 matchLevel
   :: OrderId
   -> Price
-  -> Int
+  -> Quantity
   -> Seq Resting
-  -> ([Trade], Int, Seq Resting, Int)
+  -> ([Trade], Seq Resting, Maybe Quantity)
 matchLevel taker lvlPrice = walk
   where
-    walk remaining queue
-      | remaining <= 0 = ([], 0, queue, remaining)
-      | otherwise =
-          case viewl queue of
-            EmptyL -> ([], 0, queue, remaining)
-            maker :< rest ->
-              let avail = quantityInt (rQty maker)
-                  tq    = min remaining avail
-                  trade = Trade lvlPrice (unsafeQty tq) taker (rId maker)
-              in if tq == avail
-                   then -- Maker fully consumed: pop it and continue down the queue.
-                     let (more, filled, queue', remaining') = walk (remaining - tq) rest
-                     in (trade : more, tq + filled, queue', remaining')
-                   else -- Maker partially consumed: taker is exhausted, maker stays.
-                     let maker' = maker { rQty = unsafeQty (avail - tq) }
-                     in ([trade], tq, maker' <| rest, 0)
+    walk remaining queue =
+      case viewl queue of
+        EmptyL -> ([], queue, Just remaining)
+        maker :< rest ->
+          let availQ = rQty maker
+              tradeQ = minQuantity remaining availQ
+              trade  = Trade lvlPrice tradeQ taker (rId maker)
+          in case subQuantity availQ tradeQ of
+               -- Maker partially consumed (avail > trade): taker is exhausted,
+               -- the maker stays with its reduced remainder.
+               Just makerLeft ->
+                 ([trade], maker { rQty = makerLeft } <| rest, Nothing)
+               -- Maker fully consumed: pop it, then continue only if the taker
+               -- still has quantity outstanding.
+               Nothing ->
+                 case subQuantity remaining tradeQ of
+                   Nothing   -> ([trade], rest, Nothing)
+                   Just rem' ->
+                     let (more, queue', leftover) = walk rem' rest
+                     in (trade : more, queue', leftover)
 
--- | Decide the fate of the unfilled remainder.
-finalize :: NewOrder -> Int -> [Trade] -> Book -> MatchResult
-finalize order leftover trades bookAfter
-  | leftover <= 0 = MatchResult trades FullyFilled bookAfter
-  | otherwise =
-      case (noType order, noTif order) of
-        -- GTC limit orders rest their remainder on the book.
-        (Limit p, GTC) ->
-          let resting = Resting
-                { rId    = noId order
-                , rSide  = noSide order
-                , rPrice = p
-                , rQty   = unsafeQty leftover
-                , rSeq   = SequenceNumber (bkSeq bookAfter)
-                }
-              bookRested = insertResting resting bookAfter { bkSeq = bkSeq bookAfter + 1 }
-          in MatchResult trades (restingStatus trades) bookRested
-        -- Everything else (Market, IOC, and the FOK speculative path) cancels
-        -- the remainder. FOK's "all-or-nothing" is enforced in 'match'.
-        _ -> MatchResult trades (cancelledStatus trades) bookAfter
+-- | Decide the fate of the unfilled remainder. A 'Nothing' leftover means the
+-- taker filled completely; a @'Just' q@ leftover is the quantity still owed.
+finalize :: NewOrder -> Maybe Quantity -> [Trade] -> Book -> MatchResult
+finalize _ Nothing trades bookAfter = MatchResult trades FullyFilled bookAfter
+finalize order (Just leftover) trades bookAfter =
+  case (noType order, noTif order) of
+    -- GTC limit orders rest their remainder on the book.
+    (Limit p, GTC) ->
+      let resting = Resting
+            { rId    = noId order
+            , rSide  = noSide order
+            , rPrice = p
+            , rQty   = leftover
+            , rSeq   = SequenceNumber (bkSeq bookAfter)
+            }
+          bookRested = insertResting resting bookAfter { bkSeq = bkSeq bookAfter + 1 }
+      in MatchResult trades (restingStatus trades) bookRested
+    -- Everything else (Market, IOC, and the FOK speculative path) cancels
+    -- the remainder. FOK's "all-or-nothing" is enforced in 'match'.
+    _ -> MatchResult trades (cancelledStatus trades) bookAfter
   where
     restingStatus ts   = if null ts then NoFillResting   else PartiallyFilledResting
     cancelledStatus ts = if null ts then NoFillCancelled else PartiallyFilledCancelled
@@ -210,10 +220,3 @@ insertResting :: Resting -> Book -> Book
 insertResting r bk = case rSide r of
   Buy  -> bk { bkBids = Map.insertWith (flip (Seq.><)) (rPrice r) (Seq.singleton r) (bkBids bk) }
   Sell -> bk { bkAsks = Map.insertWith (flip (Seq.><)) (rPrice r) (Seq.singleton r) (bkAsks bk) }
-
--- | Build a 'Quantity' from a value the engine has already proven positive.
--- A failure here means a matching invariant was violated, which is a bug.
-unsafeQty :: Int -> Quantity
-unsafeQty n = case mkQuantity n of
-  Just q  -> q
-  Nothing -> error ("matchLevel: non-positive quantity " ++ show n ++ " (invariant violated)")
