@@ -7,9 +7,12 @@ and that correctness is *pinned down by machine-checked invariants* rather than 
 handful of hand-written examples.
 
 ```
-cabal test                       # run the property suite (the point of the project)
-cabal run matching-engine-demo   # watch a scripted order flow match
+make test    # run the property suite (the point of the project)
+make run     # watch a scripted order flow match
+make check   # what CI runs: build + test + lint + format-check
 ```
+
+See [Developing](#developing) for the full task list and tool setup.
 
 ## What it does
 
@@ -76,6 +79,58 @@ This is a focused core, not a production exchange. Conscious omissions:
 - **No self-trade prevention, no order modification, no fees/rebates, no
   auctions/halts.** All are additive on top of this core.
 
+## Developing
+
+### Prerequisites
+
+GHC and Cabal (via [GHCup](https://www.haskell.org/ghcup/)) build and run
+everything. Linting and formatting need two extra tools on your `PATH`:
+
+| Tool | Install |
+|---|---|
+| [HLint](https://github.com/ndmitchell/hlint) | `cabal install hlint` |
+| [Fourmolu](https://github.com/fourmolu/fourmolu) | `cabal install fourmolu`, or grab a prebuilt binary from its releases |
+
+The `Makefile` invokes `cabal`, `hlint`, and `fourmolu` by name; override any of
+them if they live elsewhere, e.g. `make lint HLINT=~/.cabal/bin/hlint`.
+
+### Tasks
+
+Run `make` (or `make help`) to list them:
+
+| Command | What it does |
+|---|---|
+| `make build` | Compile the library, demo, and test suite. |
+| `make test` | Run the Hedgehog property suite. |
+| `make run` | Run the scripted matching demo. |
+| `make repl` | Open a GHCi session on the library. |
+| `make lint` | Run HLint over `src app test`. |
+| `make format` | Reformat all sources in place with Fourmolu. |
+| `make format-check` | Fail (without writing) if anything is unformatted. |
+| `make check` | `build` + `test` + `lint` + `format-check` — the CI gate. |
+| `make clean` | Remove build artifacts (`cabal clean`). |
+
+### Style and lint rules
+
+Two checked-in config files keep the code consistent and steer it away from
+common Haskell footguns:
+
+- **`fourmolu.yaml`** — formatting (2-space indent, leading commas, `-- |`
+  Haddock). `make format` rewrites to this; `make format-check` enforces it.
+- **`.hlint.yaml`** — house rules on top of HLint's defaults, each with a
+  message pointing at the fix:
+  - **No partial functions** from the Prelude/`base` (`head`, `tail`, `fromJust`,
+    `read`, `Data.Map.!`, …) — they throw at runtime.
+  - **No `error` / `undefined`** in pure code — model failure with `Maybe`/
+    `Either` or smart constructors like `mkQuantity` instead.
+  - **No lazy left folds or quadratic/lazy list helpers** (`foldl`, `nub`,
+    `genericLength`, …) — use `foldl'`, `nubOrd`, etc.
+  - **No lazy container/monad modules** (`Data.Map`, `Control.Monad.State`, …) —
+    import the `.Strict` variants.
+
+  To permit a banned function in one module, add it to that rule's `within:`
+  list in `.hlint.yaml`.
+
 ## Layout
 
 ```
@@ -83,4 +138,7 @@ src/OrderBook/Types.hs   -- domain types; illegal states made unrepresentable
 src/OrderBook/Book.hs    -- the book and the matching engine
 test/Main.hs             -- Hedgehog property suite (the invariants above)
 app/Main.hs              -- a scripted demo that prints trades and the book
+.hlint.yaml              -- lint house rules (partial fns, error, lazy folds, ...)
+fourmolu.yaml            -- formatting config
+Makefile                 -- build / test / lint / format tasks
 ```
