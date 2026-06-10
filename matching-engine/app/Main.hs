@@ -2,6 +2,7 @@
 -- can see the engine work without reading the test suite.
 module Main (main) where
 
+import           Control.Monad   (foldM)
 import           Data.Maybe      (catMaybes)
 
 import           OrderBook.Book  (Book, asks, bestAsk, bestBid, bids, emptyBook,
@@ -37,7 +38,7 @@ main = do
         -- A buy that sweeps both ask levels and rests the remainder at 103.
         , limit (OrderId 5) Buy  103 12 GTC
         ]
-  book <- foldl (\acc o -> acc >>= \b -> step b o) (pure emptyBook) flow
+  book <- foldM step emptyBook flow
 
   putStrLn "\nfinal book:"
   putStrLn $ "  bids: " ++ show (bids book)

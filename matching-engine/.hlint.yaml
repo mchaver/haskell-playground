@@ -1,6 +1,6 @@
 # HLint configuration for matching-engine.
 #
-# Two house rules are enforced here on top of HLint's defaults:
+# House rules enforced here on top of HLint's defaults:
 #
 #   1. Partial functions from the Prelude / base are banned outright. They throw
 #      at runtime on empty or malformed input, which is exactly the class of bug
@@ -8,6 +8,11 @@
 #   2. `error`, `undefined`, and `errorWithoutStackTrace` are banned, so pure
 #      code is kept total. Use `Maybe`/`Either` (or smart constructors such as
 #      `mkQuantity`) to make invalid states unrepresentable instead.
+#   3. Lazy left folds and lazy/quadratic list helpers are banned in favour of
+#      their strict (`foldl'`) or efficient (`nubOrd`) counterparts.
+#   4. The lazy container and monad modules (`Data.Map`, `Data.IntMap`,
+#      `Control.Monad.State.Lazy`, ...) may not be imported; use the `.Strict`
+#      variants so thunks do not pile up in accumulators / map values.
 #
 # To allow one of these in a specific module despite the ban, add that module to
 # the corresponding `within:` list (e.g. `within: [Some.Module]`).
@@ -27,6 +32,46 @@
     - {name: Prelude.read,                within: [], message: "read is partial; use readMaybe from Text.Read"}
     - {name: Data.List.foldl1',           within: [], message: "foldl1' is partial; use foldl' with an explicit seed"}
     - {name: Data.Maybe.fromJust,         within: [], message: "fromJust is partial; pattern match or use fromMaybe / maybe"}
+    - {name: Data.Map.!,                  within: [], message: "(!) throws on a missing key; use Data.Map.lookup or (!?)"}
+    - {name: Data.Map.Strict.!,           within: [], message: "(!) throws on a missing key; use Data.Map.Strict.lookup or (!?)"}
+
+# --- Banned: lazy left folds (thunk build-up / space leaks) ------------------
+# Lazy left folds accumulate unevaluated thunks across the whole structure and
+# are almost never what you want. Use the strict ' variants, or foldM in a monad.
+# (Lazy *right* folds are left alone: they short-circuit and stream, so they are
+# often intentional.)
+- functions:
+    - {name: foldl,                        within: [], message: "lazy foldl leaks space; use Data.List.foldl' (or Control.Monad.foldM in a monad)"}
+    - {name: Data.Map.foldl,               within: [], message: "use Data.Map.Strict.foldl'"}
+    - {name: Data.Map.Strict.foldl,        within: [], message: "use Data.Map.Strict.foldl'"}
+    - {name: Data.Map.foldlWithKey,        within: [], message: "use Data.Map.Strict.foldlWithKey'"}
+    - {name: Data.Map.Strict.foldlWithKey, within: [], message: "use Data.Map.Strict.foldlWithKey'"}
+    - {name: Data.Set.foldl,               within: [], message: "use Data.Set.foldl'"}
+
+# --- Banned: quadratic / lazy list helpers -----------------------------------
+# nub is O(n^2); the generic* family is foldr/Num-based and accumulates thunks.
+- functions:
+    - {name: Data.List.nub,                within: [], message: "nub is O(n^2); use Data.Containers.ListUtils.nubOrd (or nubInt)"}
+    - {name: Data.List.genericLength,      within: [], message: "genericLength is lazy and leaks; use length, or fromIntegral . length"}
+    - {name: Data.List.genericTake,        within: [], message: "genericTake is lazy; use take"}
+    - {name: Data.List.genericDrop,        within: [], message: "genericDrop is lazy; use drop"}
+    - {name: Data.List.genericReplicate,   within: [], message: "genericReplicate is lazy; use replicate"}
+    - {name: Data.List.genericSplitAt,     within: [], message: "genericSplitAt is lazy; use splitAt"}
+
+# --- Banned: lazy container / monad modules (import the .Strict variants) -----
+# The default Data.Map / Data.IntMap (and the explicit .Lazy modules) keep values
+# as thunks, which leaks memory in long-lived structures like an order book.
+# Control.Monad.State / Writer alias their lazy variants for the same reason.
+- modules:
+    - {name: Data.Map,                  within: [], message: "import Data.Map.Strict; the lazy Data.Map keeps map values as thunks"}
+    - {name: Data.Map.Lazy,             within: [], message: "import Data.Map.Strict instead of Data.Map.Lazy"}
+    - {name: Data.IntMap,               within: [], message: "import Data.IntMap.Strict instead of the lazy Data.IntMap"}
+    - {name: Data.IntMap.Lazy,          within: [], message: "import Data.IntMap.Strict instead of Data.IntMap.Lazy"}
+    - {name: Data.HashMap.Lazy,         within: [], message: "import Data.HashMap.Strict instead of Data.HashMap.Lazy"}
+    - {name: Control.Monad.State,       within: [], message: "import Control.Monad.State.Strict (Control.Monad.State is lazy)"}
+    - {name: Control.Monad.State.Lazy,  within: [], message: "import Control.Monad.State.Strict instead"}
+    - {name: Control.Monad.Writer,      within: [], message: "import Control.Monad.Writer.Strict (Control.Monad.Writer is lazy)"}
+    - {name: Control.Monad.Writer.Lazy, within: [], message: "import Control.Monad.Writer.Strict instead"}
 
 # --- Banned: error and friends (keep pure code total) ------------------------
 - functions:
