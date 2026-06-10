@@ -6,7 +6,6 @@
 --   * A 'Resting' order always has a limit 'Price'. Market orders never rest.
 --   * Order arrival is captured by 'SequenceNumber', which is the basis for
 --     time priority within a price level.
-
 module OrderBook.Types
   ( Side (..)
   , opposite
@@ -33,10 +32,10 @@ data Side
   deriving stock (Eq, Ord, Show, Enum, Bounded)
 
 opposite :: Side -> Side
-opposite Buy  = Sell
+opposite Buy = Sell
 opposite Sell = Buy
 
--- | Price in integer ticks. 
+-- | Price in integer ticks.
 newtype Price
   = Price Int
   deriving stock (Eq, Ord, Show)
@@ -48,7 +47,7 @@ newtype Quantity = Quantity Int
 -- | Create only positive quantities.
 mkQuantity :: Int -> Maybe Quantity
 mkQuantity n
-  | n > 0     = Just (Quantity n)
+  | n > 0 = Just (Quantity n)
   | otherwise = Nothing
 
 quantityInt :: Quantity -> Int
@@ -64,7 +63,7 @@ minQuantity (Quantity a) (Quantity b) = Quantity (min a b)
 -- equal to the first), preserving the positivity invariant without 'error'.
 subQuantity :: Quantity -> Quantity -> Maybe Quantity
 subQuantity (Quantity a) (Quantity b)
-  | a > b     = Just (Quantity (a - b))
+  | a > b = Just (Quantity (a - b))
   | otherwise = Nothing
 
 -- | Stable identifier for an order, assigned by the gateway/client.
@@ -79,9 +78,12 @@ newtype SequenceNumber = SequenceNumber Word
 
 -- | Time-in-force policy for an incoming order.
 data TimeInForce
-  = GTC  -- ^ Good-til-cancelled: rest any unfilled remainder on the book.
-  | IOC  -- ^ Immediate-or-cancel: fill what is marketable now, cancel the rest.
-  | FOK  -- ^ Fill-or-kill: fill in full immediately, otherwise do nothing.
+  = -- | Good-til-cancelled: rest any unfilled remainder on the book.
+    GTC
+  | -- | Immediate-or-cancel: fill what is marketable now, cancel the rest.
+    IOC
+  | -- | Fill-or-kill: fill in full immediately, otherwise do nothing.
+    FOK
   deriving stock (Eq, Show)
 
 -- | A 'Limit' order only trades at its price or better.
@@ -93,22 +95,22 @@ data OrderType
 
 -- | An incoming order, before it has interacted with the book.
 data NewOrder = NewOrder
-  { noId   :: OrderId
+  { noId :: OrderId
   , noSide :: Side
   , noType :: OrderType
-  , noTif  :: TimeInForce
-  , noQty  :: Quantity
+  , noTif :: TimeInForce
+  , noQty :: Quantity
   }
   deriving stock (Eq, Show)
 
 -- | An order resting on the book. By construction it always carries a limit
 -- price and a positive remaining quantity.
 data Resting = Resting
-  { rId    :: OrderId
-  , rSide  :: Side
+  { rId :: OrderId
+  , rSide :: Side
   , rPrice :: Price
-  , rQty   :: Quantity
-  , rSeq   :: SequenceNumber
+  , rQty :: Quantity
+  , rSeq :: SequenceNumber
   }
   deriving stock (Eq, Show)
 
@@ -116,7 +118,7 @@ data Resting = Resting
 -- resting order). The price is always the maker's resting price.
 data Trade = Trade
   { trPrice :: Price
-  , trQty   :: Quantity
+  , trQty :: Quantity
   , trTaker :: OrderId
   , trMaker :: OrderId
   }
@@ -124,10 +126,16 @@ data Trade = Trade
 
 -- | The outcome for the incoming (taker) order.
 data TakerStatus
-  = FullyFilled               -- ^ The whole order traded.
-  | PartiallyFilledResting    -- ^ Some traded, the remainder is now resting.
-  | PartiallyFilledCancelled  -- ^ Some traded, the remainder was cancelled (IOC/Market).
-  | NoFillResting             -- ^ Nothing traded, the whole order is now resting.
-  | NoFillCancelled           -- ^ Nothing traded, nothing rested (IOC/Market, no liquidity).
-  | Rejected                  -- ^ FOK could not fill in full, the book is untouched.
+  = -- | The whole order traded.
+    FullyFilled
+  | -- | Some traded, the remainder is now resting.
+    PartiallyFilledResting
+  | -- | Some traded, the remainder was cancelled (IOC/Market).
+    PartiallyFilledCancelled
+  | -- | Nothing traded, the whole order is now resting.
+    NoFillResting
+  | -- | Nothing traded, nothing rested (IOC/Market, no liquidity).
+    NoFillCancelled
+  | -- | FOK could not fill in full, the book is untouched.
+    Rejected
   deriving stock (Eq, Show)

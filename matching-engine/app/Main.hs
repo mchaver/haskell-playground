@@ -2,14 +2,30 @@
 -- can see the engine work without reading the test suite.
 module Main (main) where
 
-import           Control.Monad   (foldM)
-import           Data.Maybe      (catMaybes)
+import Control.Monad (foldM)
+import Data.Maybe (catMaybes)
 
-import           OrderBook.Book  (Book, asks, bestAsk, bestBid, bids, emptyBook,
-                                  match, mrBook, mrStatus, mrTrades)
-import           OrderBook.Types (NewOrder (..), OrderId (..), OrderType (..),
-                                  Price (..), Side (..), TimeInForce (..),
-                                  mkQuantity)
+import OrderBook.Book
+  ( Book
+  , asks
+  , bestAsk
+  , bestBid
+  , bids
+  , emptyBook
+  , match
+  , mrBook
+  , mrStatus
+  , mrTrades
+  )
+import OrderBook.Types
+  ( NewOrder (..)
+  , OrderId (..)
+  , OrderType (..)
+  , Price (..)
+  , Side (..)
+  , TimeInForce (..)
+  , mkQuantity
+  )
 
 -- | Build a limit order, dropping it if the size is not strictly positive.
 -- Returns 'Maybe' rather than calling 'error' so the helper stays total.
@@ -31,13 +47,13 @@ main = do
   -- Build a resting book: bids 99/100, asks 101/102.
   let flow =
         catMaybes
-        [ limit (OrderId 1) Sell 102 5 GTC
-        , limit (OrderId 2) Sell 101 5 GTC
-        , limit (OrderId 3) Buy  100 5 GTC
-        , limit (OrderId 4) Buy   99 5 GTC
-        -- A buy that sweeps both ask levels and rests the remainder at 103.
-        , limit (OrderId 5) Buy  103 12 GTC
-        ]
+          [ limit (OrderId 1) Sell 102 5 GTC
+          , limit (OrderId 2) Sell 101 5 GTC
+          , limit (OrderId 3) Buy 100 5 GTC
+          , limit (OrderId 4) Buy 99 5 GTC
+          , -- A buy that sweeps both ask levels and rests the remainder at 103.
+            limit (OrderId 5) Buy 103 12 GTC
+          ]
   book <- foldM step emptyBook flow
 
   putStrLn "\nfinal book:"

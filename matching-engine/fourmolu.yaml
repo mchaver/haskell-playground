@@ -1,0 +1,21 @@
+# Fourmolu formatting config for matching-engine.
+# Chosen to match the existing house style: 2-space indentation, leading
+# commas, and `-- |` line-style Haddock (rather than {- | -} blocks).
+
+indentation: 2
+column-limit: none
+function-arrows: trailing
+comma-style: leading
+import-export-style: leading
+import-grouping: legacy
+indent-wheres: false
+record-brace-space: true
+newlines-between-decls: 1
+haddock-style: single-line
+let-style: auto
+in-style: right-align
+if-style: indented
+single-constraint-parens: never
+single-deriving-parens: never
+unicode: never
+respectful: true

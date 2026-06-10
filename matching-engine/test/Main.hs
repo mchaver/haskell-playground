@@ -2,23 +2,52 @@
 
 module Main (main) where
 
-import           Data.List          (foldl')
+import Data.List (foldl')
 
-import           Hedgehog           (Gen, Group (..), Property, assert,
-                                     checkParallel, diff, failure, footnote,
-                                     forAll, property, success, (===))
-import qualified Hedgehog.Gen       as Gen
-import           Hedgehog.Main      (defaultMain)
-import qualified Hedgehog.Range     as Range
+import Hedgehog
+  ( Gen
+  , Group (..)
+  , Property
+  , assert
+  , checkParallel
+  , diff
+  , failure
+  , footnote
+  , forAll
+  , property
+  , success
+  , (===)
+  )
+import Hedgehog.Gen qualified as Gen
+import Hedgehog.Main (defaultMain)
+import Hedgehog.Range qualified as Range
 
-import           OrderBook.Book     (Book, bestAsk, bestBid, bookQuantity,
-                                     emptyBook, match, mrBook, mrStatus,
-                                     mrTrades, restingOrders)
-import           OrderBook.Types    (NewOrder (..), OrderId (..),
-                                     OrderType (..), Price (..), Quantity,
-                                     Resting (..), Side (..), TakerStatus (..),
-                                     TimeInForce (..), Trade (..), mkQuantity,
-                                     quantityInt)
+import OrderBook.Book
+  ( Book
+  , bestAsk
+  , bestBid
+  , bookQuantity
+  , emptyBook
+  , match
+  , mrBook
+  , mrStatus
+  , mrTrades
+  , restingOrders
+  )
+import OrderBook.Types
+  ( NewOrder (..)
+  , OrderId (..)
+  , OrderType (..)
+  , Price (..)
+  , Quantity
+  , Resting (..)
+  , Side (..)
+  , TakerStatus (..)
+  , TimeInForce (..)
+  , Trade (..)
+  , mkQuantity
+  , quantityInt
+  )
 
 -- ---------------------------------------------------------------------------
 -- Generators
@@ -57,7 +86,7 @@ genRestingSpec =
   NewOrder (OrderId (-1)) <$> genSide <*> (Limit <$> genPrice) <*> pure GTC <*> genQty
 
 assignIds :: [NewOrder] -> [NewOrder]
-assignIds = zipWith (\i o -> o { noId = OrderId i }) [0 ..]
+assignIds = zipWith (\i o -> o {noId = OrderId i}) [0 ..]
 
 -- | Replay a flow of specs into a book, threading the resulting book through.
 buildBook :: [NewOrder] -> Book
@@ -80,16 +109,16 @@ tradedQty = sum . map (quantityInt . trQty)
 prop_conservation :: Property
 prop_conservation = property $ do
   restSpecs <- forAll (Gen.list (Range.linear 0 40) genRestingSpec)
-  inSpec    <- forAll genSpec
-  let book     = buildBook restSpecs
-      incoming = inSpec { noId = OrderId 100000 }
-      res      = match incoming book
-      traded   = tradedQty (mrTrades res)
-      want     = quantityInt (noQty incoming)
-      rested   = case mrStatus res of
-                   PartiallyFilledResting -> want - traded
-                   NoFillResting          -> want
-                   _                      -> 0
+  inSpec <- forAll genSpec
+  let book = buildBook restSpecs
+      incoming = inSpec {noId = OrderId 100000}
+      res = match incoming book
+      traded = tradedQty (mrTrades res)
+      want = quantityInt (noQty incoming)
+      rested = case mrStatus res of
+        PartiallyFilledResting -> want - traded
+        NoFillResting -> want
+        _ -> 0
   (bookQuantity book - bookQuantity (mrBook res)) === (traded - rested)
 
 -- | The book is never crossed: after any flow, the best bid is strictly below
@@ -100,29 +129,29 @@ prop_neverCrossed = property $ do
   -- Check the invariant after *every* prefix, not just the end state.
   let books = scanl (\bk o -> mrBook (match o bk)) emptyBook (assignIds specs)
   mapM_ assertUncrossed books
-  where
-    assertUncrossed bk =
-      case (bestBid bk, bestAsk bk) of
-        (Just b, Just a) -> diff b (<) a
-        _                -> success
+ where
+  assertUncrossed bk =
+    case (bestBid bk, bestAsk bk) of
+      (Just b, Just a) -> diff b (<) a
+      _ -> success
 
 -- | Price protection: a trade never executes outside the taker's limit.
 -- A buyer never pays more than its limit; a seller never sells below it.
 prop_priceProtection :: Property
 prop_priceProtection = property $ do
   restSpecs <- forAll (Gen.list (Range.linear 0 40) genRestingSpec)
-  inSpec    <- forAll genSpec
-  let book     = buildBook restSpecs
-      incoming = inSpec { noId = OrderId 100000 }
-      res      = match incoming book
+  inSpec <- forAll genSpec
+  let book = buildBook restSpecs
+      incoming = inSpec {noId = OrderId 100000}
+      res = match incoming book
   mapM_ (assertWithinLimit incoming) (mrTrades res)
-  where
-    assertWithinLimit o t =
-      case noType o of
-        Market    -> success
-        Limit lim -> case noSide o of
-          Buy  -> diff (trPrice t) (<=) lim
-          Sell -> diff (trPrice t) (>=) lim
+ where
+  assertWithinLimit o t =
+    case noType o of
+      Market -> success
+      Limit lim -> case noSide o of
+        Buy -> diff (trPrice t) (<=) lim
+        Sell -> diff (trPrice t) (>=) lim
 
 -- | Price priority: a taker's fills improve monotonically away from it.
 -- For a buyer the trade prices are non-decreasing (cheapest asks first); for a
@@ -130,18 +159,18 @@ prop_priceProtection = property $ do
 prop_pricePriority :: Property
 prop_pricePriority = property $ do
   restSpecs <- forAll (Gen.list (Range.linear 0 40) genRestingSpec)
-  inSpec    <- forAll genSpec
-  let book      = buildBook restSpecs
-      incoming  = inSpec { noId = OrderId 100000 }
-      res       = match incoming book
-      prices    = map trPrice (mrTrades res)
-      ordered   = case noSide incoming of
-                    Buy  -> nonDecreasing prices
-                    Sell -> nonIncreasing prices
+  inSpec <- forAll genSpec
+  let book = buildBook restSpecs
+      incoming = inSpec {noId = OrderId 100000}
+      res = match incoming book
+      prices = map trPrice (mrTrades res)
+      ordered = case noSide incoming of
+        Buy -> nonDecreasing prices
+        Sell -> nonIncreasing prices
   assert ordered
-  where
-    nonDecreasing xs = and (zipWith (<=) xs (drop 1 xs))
-    nonIncreasing xs = and (zipWith (>=) xs (drop 1 xs))
+ where
+  nonDecreasing xs = and (zipWith (<=) xs (drop 1 xs))
+  nonIncreasing xs = and (zipWith (>=) xs (drop 1 xs))
 
 -- | Fill-or-kill is atomic. A FOK order is either filled in full (and the trade
 -- quantity equals the order quantity) or it is rejected with no trades and the
@@ -149,15 +178,15 @@ prop_pricePriority = property $ do
 prop_fokAtomic :: Property
 prop_fokAtomic = property $ do
   restSpecs <- forAll (Gen.list (Range.linear 0 40) genRestingSpec)
-  inSpec    <- forAll genSpec
-  let book     = buildBook restSpecs
-      incoming = inSpec { noId = OrderId 100000, noTif = FOK }
-      res      = match incoming book
+  inSpec <- forAll genSpec
+  let book = buildBook restSpecs
+      incoming = inSpec {noId = OrderId 100000, noTif = FOK}
+      res = match incoming book
   case mrStatus res of
     FullyFilled -> tradedQty (mrTrades res) === quantityInt (noQty incoming)
-    Rejected    -> do
+    Rejected -> do
       mrTrades res === []
-      mrBook res   === book
+      mrBook res === book
     other -> do
       footnote ("FOK produced an unexpected status: " ++ show other)
       failure
@@ -174,12 +203,14 @@ prop_noZeroResting = property $ do
 main :: IO ()
 main =
   defaultMain
-    [ checkParallel $ Group "OrderBook"
-        [ ("conservation of quantity",  prop_conservation)
-        , ("book is never crossed",     prop_neverCrossed)
-        , ("taker price protection",    prop_priceProtection)
-        , ("price priority of fills",   prop_pricePriority)
-        , ("fill-or-kill is atomic",    prop_fokAtomic)
-        , ("no zero-qty resting order", prop_noZeroResting)
-        ]
+    [ checkParallel $
+        Group
+          "OrderBook"
+          [ ("conservation of quantity", prop_conservation)
+          , ("book is never crossed", prop_neverCrossed)
+          , ("taker price protection", prop_priceProtection)
+          , ("price priority of fills", prop_pricePriority)
+          , ("fill-or-kill is atomic", prop_fokAtomic)
+          , ("no zero-qty resting order", prop_noZeroResting)
+          ]
     ]
