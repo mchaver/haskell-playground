@@ -1,0 +1,51 @@
+cabal-version:      3.0
+name:               linear-accounting
+version:            0.1.0.0
+synopsis:           Conservation-of-money accounting with linear types
+description:        A small exploration of GHC's @LinearTypes@ extension and
+                    the @linear-base@ library. @Money@ is a linear resource:
+                    the type checker forbids duplicating it (no counterfeiting)
+                    or silently dropping it (no funds vanishing), so every unit
+                    is conserved across @split@, @merge@, and @transfer@. The
+                    only ways to create or destroy funds are the trusted
+                    @mint@/@burn@ boundary operations.
+license:            BSD-3-Clause
+author:             mchaver
+maintainer:         mchaver@gmail.com
+build-type:         Simple
+
+common warnings
+    ghc-options: -Wall
+                 -Wcompat
+                 -Wincomplete-record-updates
+                 -Wincomplete-uni-patterns
+                 -Wredundant-constraints
+
+library
+    import:           warnings
+    exposed-modules:  Accounting.Money
+                      Accounting.Ledger
+    build-depends:    base        >=4.17 && <5
+                    , linear-base
+    hs-source-dirs:   src
+    default-language: GHC2021
+
+executable linear-accounting-demo
+    import:           warnings
+    main-is:          Main.hs
+    hs-source-dirs:   app
+    build-depends:    base
+                    , linear-accounting
+                    , linear-base
+    default-language: GHC2021
+
+test-suite spec
+    import:           warnings
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    hs-source-dirs:   test
+    build-depends:    base
+                    , hedgehog
+                    , linear-accounting
+                    , linear-base
+    default-language: GHC2021

@@ -9,6 +9,7 @@ libraries and domains.
 - [`matching-engine`](matching-engine/): a limit order book and matching engine.
 - [`itch-codec`](itch-codec/): an encoder/decoder for a subset of the NASDAQ TotalView-ITCH 5.0 binary market-data protocol. 
 - [`effect-example`](effect-example/): a small [Effectful](https://hackage.haskell.org/package/effectful) demo.
+- [`linear-accounting`](linear-accounting/): `LinearTypes` and [linear-base](https://hackage.haskell.org/package/linear-base) demo that uses tye type system to convserve the amount of money in a system.
 
 ## Shared tooling
 
